@@ -57,6 +57,36 @@ config PMW3610_SMART_ALGORITHM
     The algorithm is used to extend the tracking acrocss a wider range of surfaces
     such as graniles and tiles.
 
+if PMW3610_SMART_ALGORITHM
+
+choice
+    prompt "Smart-algorithm mode at boot"
+    default PMW3610_SMART_BOOT_ON
+    help
+      Which state the smart algorithm (register 0x32) is in at startup.
+
+      In AUTO the driver toggles it on the optical shutter: enabled for bright
+      surfaces (shutter < 45) and disabled for dim ones. That heuristic suits a
+      mouse on a hard desk, but a trackball with a dark or colored ball runs at a
+      high shutter, where AUTO leaves the algorithm disabled — exactly where the
+      extra surface coverage helps most. Pinning it ON keeps tracking smooth on
+      those surfaces with no regression on bright/black balls, so ON is the
+      default. AUTO restores the previous shutter-driven behavior; OFF disables
+      the algorithm entirely.
+
+config PMW3610_SMART_BOOT_ON
+    bool "on (pin register 0x32 enabled at boot)"
+
+config PMW3610_SMART_BOOT_AUTO
+    bool "auto (shutter-driven toggle)"
+
+config PMW3610_SMART_BOOT_OFF
+    bool "off (pin register 0x32 disabled at boot)"
+
+endchoice
+
+endif # PMW3610_SMART_ALGORITHM
+
 config PMW3610_RUN_DOWNSHIFT_TIME_MS
     int "PMW3610's default RUN mode downshift time"
     default 128

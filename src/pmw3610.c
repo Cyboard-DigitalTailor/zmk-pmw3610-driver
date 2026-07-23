@@ -432,6 +432,21 @@ static int pmw3610_async_init_configure(const struct device *dev) {
                                       CONFIG_PMW3610_REST3_SAMPLE_TIME_MS);
     }
 
+#if defined(CONFIG_PMW3610_SMART_ALGORITHM) &&                                  \
+    (defined(CONFIG_PMW3610_SMART_BOOT_ON) || defined(CONFIG_PMW3610_SMART_BOOT_OFF))
+    /* Pin the smart algorithm to the configured boot state. Register 0x32:
+     * 0x00 = enabled, 0x80 = disabled — the same values the AUTO shutter-toggle
+     * writes. Dim/low-feature surfaces (dark or colored trackballs) run at a
+     * high shutter, where AUTO would disable smart; BOOT_ON keeps it enabled. */
+    if (!err) {
+#if defined(CONFIG_PMW3610_SMART_BOOT_ON)
+        err = pmw3610_write(dev, 0x32, 0x00);
+#else
+        err = pmw3610_write(dev, 0x32, 0x80);
+#endif
+    }
+#endif
+
     if (err) {
         LOG_ERR("Config the sensor failed");
         return err;
@@ -514,7 +529,11 @@ static int pmw3610_report_data(const struct device *dev) {
     LOG_DBG("x/y: %d/%d", x, y);
 
 #ifdef CONFIG_PMW3610_SMART_ALGORITHM
-    int16_t shutter = ((int16_t)(buf[PMW3610_SHUTTER_H_POS] & 0x01) << 8) 
+#if defined(CONFIG_PMW3610_SMART_BOOT_AUTO)
+    /* AUTO boot mode: toggle the smart algorithm on the optical shutter — enable
+     * on bright surfaces (shutter < 45), disable on dim ones. BOOT_ON / BOOT_OFF
+     * pin it once at init (see pmw3610_async_init_configure) and skip this. */
+    int16_t shutter = ((int16_t)(buf[PMW3610_SHUTTER_H_POS] & 0x01) << 8)
                     + buf[PMW3610_SHUTTER_L_POS];
     if (data->sw_smart_flag && shutter < 45) {
         pmw3610_write(dev, 0x32, 0x00);
@@ -524,6 +543,7 @@ static int pmw3610_report_data(const struct device *dev) {
         pmw3610_write(dev, 0x32, 0x80);
         data->sw_smart_flag = true;
     }
+#endif
 #endif
 
 #if CONFIG_PMW3610_REPORT_INTERVAL_MIN > 0
@@ -626,8 +646,13 @@ static int pmw3610_init(const struct device *dev) {
     // init device pointer
     data->dev = dev;
 
-    // init smart algorithm flag;
+    // init smart algorithm state to match the configured boot mode
+    // (sw_smart_flag == true means smart is currently OFF).
+#if defined(CONFIG_PMW3610_SMART_ALGORITHM) && defined(CONFIG_PMW3610_SMART_BOOT_OFF)
+    data->sw_smart_flag = true;
+#else
     data->sw_smart_flag = false;
+#endif
 
     // init trigger handler work
     k_work_init(&data->trigger_work, pmw3610_work_callback);
